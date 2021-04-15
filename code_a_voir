@@ -10,7 +10,7 @@
 #include "GLCD_Config.h"
 #include "stdio.h"
 
-short distance, angle, distanceMoy;
+
 char distance_[20];
 char distance_q2[50], angle_q2[20];
 
@@ -36,12 +36,14 @@ osThreadId ID_tache1,ID_tache2;
 void tache1(void const * argument) // recupere les informations du lidar
 {
 	uint8_t send[2] = {0xA5,0x20}; //séquence start a envoyer 
-	char tab[10];
-	uint16_t i,k,l;
+  char tab[1007]={0}; // revoir au besoin 
+	uint16_t i,k,l=0,j;
 	char tabk[10];
-	
-	short distance1, distance2, angle1, angle2; 
-	
+	int ready_traitement = 0;
+	char distance1, distance2, angle1, angle2; 
+  short distance[36][10], angle, distanceMoy[36], distanceTot[36];
+  char cpt[36];
+  
 	Init_UART1(); // initialisation de l'uart
 	
 	while(1)
@@ -49,36 +51,77 @@ void tache1(void const * argument) // recupere les informations du lidar
 		while(Driver_USART1.GetStatus().tx_busy == 1); // attente buffer TX vide
 		Driver_USART1.Send(send,2); // on envoie depuis Rx le contenu du tableau send
 		
-		while(l<1000)
+    //remplissage du tableau
+		while(l<1007)
 		{
-			Driver_USART1.Receive(tab,1000);
+			Driver_USART1.Receive(tab,1007); // la fonction remplie jusqu'a 1000 cases 
 			while(Driver_USART1.GetRxCount()<1); // attente que 1 case soit pleine
-		for(i=0;i<1000; i++	)
-		{
-			if (((tab[i]&0xA5) ==0xA5) && ( (tab[i+1]&0x5A)== 0x5A))
-			{
-				for(
-					// recuperation de la distance
-					distance1 = tab[i+10]; 
-					distance2 = tab[i+11];
-					distance = ((distance2<<8) | distance1)>>2;
-						
-					// recuperation de l'angle
-					angle1 = tab[i+8]; 
-					angle2 = tab[i+9];
-					angle = (((angle2<<8)|angle1)>>1)>>6;
-				
-					if(angle>=0 && angle <11)
-						{
-							distanceMoy += distance;
-							k++;
-						}
-					else if(angle>11 && angle <361)
-						{
-							l++;
-						}
-				}
-		}
+      l++;
+    }
+    
+    for(i= 0; i<1007 ; i++)
+    {
+      if (((tab[i]&0xA5) ==0xA5) && ( (tab[i+1]&0x5A)== 0x5A))
+        ready_traitement = 1; // reception A55A
+      if (ready_traitement == 1) // debut du traitement
+      {
+        // for(j=0 ; j < (200-i*5) ; j++)
+        for(j=0 ; j < 200 ; j++)
+        {
+          angle1 = tab[j*5+8]; 
+          angle2 = tab[j*5+9];
+          angle = (((angle2<<8)|angle1)>>1)>>6;
+          
+          switch (angle) 
+            case angle>=0   && angle <=10 :cpt[0]++;distance[0][cpt[0]];break; //voir si marche mieux en tant que car angle>="0"   && angle <="10"
+            case angle>=10  && angle <=20 :cpt[1]++;distance[1][cpt[1]];break;
+            case angle>=20  && angle <=30 :cpt[2]++;distance[2][cpt[2]];break;
+            case angle>=30  && angle <=40 :cpt[3]++;distance[3][cpt[3]];break;
+            case angle>=40  && angle <=50 :cpt[4]++;distance[4][cpt[4]];break;
+            case angle>=50  && angle <=60 :cpt[5]++;distance[5][cpt[5]];break;
+            case angle>=60  && angle <=70 :cpt[6]++;distance[6][cpt[6]];break;
+            case angle>=70  && angle <=80 :cpt[7]++;distance[7][cpt[7]];break;
+            case angle>=80  && angle <=90 :cpt[8]++;distance[8][cpt[8]];break;
+            case angle>=90  && angle <=100:cpt[9]++;distance[9][cpt[9]];break;
+            case angle>=100 && angle <=110:cpt[10]++;distance[10][cpt[10]];break;
+            case angle>=110 && angle <=120:cpt[11]++;distance[11][cpt[11]];break;
+            case angle>=120 && angle <=130:cpt[12]++;distance[12][cpt[12]];break;
+            case angle>=130 && angle <=140:cpt[13]++;distance[13][cpt[13]];break;
+            case angle>=140 && angle <=150:cpt[14]++;distance[14][cpt[14]];break;
+            case angle>=150 && angle <=160:cpt[15]++;distance[15][cpt[15]];break;
+            case angle>=160 && angle <=170:cpt[16]++;distance[16][cpt[16]];break;
+            case angle>=170 && angle <=180:cpt[17]++;distance[17][cpt[17]];break;
+            case angle>=180 && angle <=190:cpt[18]++;distance[18][cpt[18]];break;
+            case angle>=190 && angle <=200:cpt[19]++;distance[19][cpt[19]];break;
+            case angle>=200 && angle <=210:cpt[20]++;distance[20][cpt[20]];break;
+            case angle>=210 && angle <=220:cpt[21]++;distance[21][cpt[21]];break;
+            case angle>=220 && angle <=230:cpt[22]++;distance[22][cpt[22]];break;
+            case angle>=230 && angle <=240:cpt[23]++;distance[23][cpt[23]];break;
+            case angle>=240 && angle <=250:cpt[24]++;distance[24][cpt[24]];break;
+            case angle>=250 && angle <=260:cpt[25]++;distance[25][cpt[25]];break;
+            case angle>=260 && angle <=270:cpt[26]++;distance[26][cpt[26]];break;
+            case angle>=270 && angle <=280:cpt[27]++;distance[27][cpt[27]];break;
+            case angle>=280 && angle <=290:cpt[28]++;distance[28][cpt[28]];break;
+            case angle>=290 && angle <=300:cpt[29]++;distance[29][cpt[29]];break;
+            case angle>=300 && angle <=310:cpt[30]++;distance[30][cpt[30]];break;
+            case angle>=310 && angle <=320:cpt[31]++;distance[31][cpt[31]];break;
+            case angle>=320 && angle <=330:cpt[32]++;distance[32][cpt[32]];break;
+            case angle>=330 && angle <=340:cpt[33]++;distance[33][cpt[33]];break;
+            case angle>=340 && angle <=350:cpt[34]++;distance[34][cpt[34]];break;
+            case angle>=350 && angle <=360:cpt[35]++;distance[35][cpt[35]];break;
+            default : break;
+        } 
+      }
+      
+    }
+    /*calcul des moyennes*/
+    for (j = 0 ; j < 36 ; j++) 
+    {
+      for (i=0 ; i < cpt[j] ; i++) // boucle qui fait le calcul 
+        distanceMoy[j]+= distance[i]; 
+      distanceMoy[j] =(short)(((float) distanceMoy[j])/cpt[j]);
+    }
+    
 		sprintf(distance_, "dist= %05d", distanceMoy); 
 		GLCD_DrawString(10,20,distance_);
 		
@@ -89,8 +132,6 @@ void tache1(void const * argument) // recupere les informations du lidar
 		
 		sprintf(distance_q2, "distT= %05d", distanceMoy); 
 		GLCD_DrawString(10,100,distance_q2);
-		
-		k=0;
 	}
 	osDelay(500);
 }  
