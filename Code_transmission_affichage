@@ -1,0 +1,306 @@
+/*----------------------------------------------------------------------------
+ * CMSIS-RTOS 'main' function template
+ *---------------------------------------------------------------------------*/
+
+#define osObjectsPublic                     // define objects in main module
+#include "osObjects.h"                      // RTOS object definitions
+#include "Driver_USART.h"               // ::CMSIS Driver:USART
+#include "LPC17xx.h"
+#include "Board_GLCD.h"
+#include "GLCD_Config.h"
+#include "stdio.h"
+
+short distance, angle;
+char distance_[20];
+
+extern ARM_DRIVER_USART Driver_USART1;
+extern GLCD_FONT GLCD_Font_16x24; 
+
+void lidar_MOTOCLT(void);
+
+void Init_UART1(void);
+
+void tache1(void const * argument);
+void tache2(void const * argument);
+
+void dir_gauche(int pourcent);
+void dir_droite(int pourcent); // valeur entre 0.080 et 0.094 // sur P2.4
+void marche_av(int vitesse);// sur P2.3 avant=11 ; arret=00 ; reverse=22
+void marche_essai(int i);
+void marche_stop(void);
+
+
+osThreadId ID_tache1,ID_tache2;
+
+void tache1(void const * argument) // recupere les informations du lidar
+{
+	uint8_t send[2] = {0xA5,0x20}; //séquence start a envoyer 
+	uint8_t tab[10];
+	uint8_t i;
+	
+	char distance_q2[20], angle_q2[20];
+	short distance1, distance2, angle1, angle2; 
+
+	
+	Init_UART1(); // initialisation de l'uart
+	
+	while(Driver_USART1.GetStatus().tx_busy == 1); // attente buffer TX vide
+	Driver_USART1.Send(send,2); // on envoie depuis Rx le contenu du tableau send
+	
+	while(1)
+	{
+		Driver_USART1.Receive(tab,10);
+		while(Driver_USART1.GetRxCount()<1); // attente que 1 case soit pleine
+		
+		for (i=0;i<10;i++)
+		{
+			if (( (tab[i]&0x3E) ==0x3E) && ( (tab[i+1]&0x01) == 0x01))
+			{
+			// recuperation de la distance
+			distance1 = tab[i+3]; 
+			distance2 = tab[i+4];
+			distance = ((distance2<<8) | distance1)>>2;
+
+			//affichage de la distance 
+			sprintf(distance_q2, "dist= %05d", distance); 
+			GLCD_DrawString(10,20,distance_q2);
+				
+			// recuperation de l'angle
+			angle1 = tab[i+1]; 
+			angle2 = tab[i+2];
+			//angle = ((((angle2<<8)|angle1)>>1)&0x7FFF)>>6;
+			angle = (((angle2<<8)|angle1)>>1)>>6;
+			
+			// affichage de l'angle
+			sprintf(angle_q2, "angle= %05d", angle); 
+			GLCD_DrawString(10,40,angle_q2);
+				
+			osDelay(500);
+			}
+		}
+	}
+	osDelay(500);
+}  
+
+void tache2(void const * argument) // gestion du    deplacement de la voiture
+{
+
+ while(1)
+ {
+	/* if((angle>0&&angle<10) && distance <300)
+	 {
+		marche_essai(41000); // stop
+		}
+		
+	else if((angle>0&&angle<10) && distance >300)
+	 {
+		 marche_essai(38000); // avant
+ } */
+
+ osDelay(500);
+}
+}
+
+osThreadDef(tache1, osPriorityNormal,1,0);
+osThreadDef(tache2, osPriorityNormal,1,0);
+/*
+ * main: initialize and start the system
+ */
+int main (void) {
+	
+  osKernelInitialize ();                    // initialize CMSIS-RTOS
+
+  // initialize peripherals0 here
+	Init_UART1(); // initialisation de l'uart
+	GLCD_Initialize();
+	GLCD_ClearScreen();
+	GLCD_SetFont(&GLCD_Font_16x24);
+	lidar_MOTOCLT();
+	
+  // create 'thread' functions that start executing,
+	ID_tache1 = osThreadCreate ( osThread ( tache1 ), NULL ) ;
+	ID_tache2 = osThreadCreate ( osThread ( tache2 ), NULL ) ;
+  // example: tid_name = osThreadCreate (osThread(name), NULL);
+  osKernelStart ();                         // start thread execution 
+	osDelay(osWaitForever) ;
+	return 0;
+}
+
+void lidar_MOTOCLT(void) // P=25kHz; %haut=60%; sur P2.2
+{
+	
+	LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		
+	LPC_PINCON->PINSEL4 |= (1<<4); 	//PWM 1.3
+	
+	LPC_PWM1->CTCR = 0;							//mode timer
+	LPC_PWM1->PR = 0;								//Pas de prédivision
+	LPC_PWM1->MR0 = 999;						//valeur de N pour 25kHz
+	LPC_PWM1->MCR |= (1<<1);				//RAZ du compteur si correspondance avec MR0	
+	LPC_PWM1->PCR |= (1<<11);				//active PWM3
+	LPC_PWM1->MR3 = 599;						//rapport cyclique de 60%
+	LPC_PWM1->TCR =1;								//démarage du timer
+}
+
+
+void Init_UART1(void)
+{
+	Driver_USART1.Initialize(NULL);
+	Driver_USART1.PowerControl(ARM_POWER_FULL);
+	Driver_USART1.Control(ARM_USART_MODE_ASYNCHRONOUS |
+							ARM_USART_DATA_BITS_8		|
+							ARM_USART_STOP_BITS_1		|
+							ARM_USART_PARITY_NONE		|
+							ARM_USART_FLOW_CONTROL_NONE,
+							115200);
+	Driver_USART1.Control(ARM_USART_CONTROL_TX,1); // validation emission
+	Driver_USART1.Control(ARM_USART_CONTROL_RX,1); // validation transmission
+}
+
+void marche_stop(void)
+	{
+		int i;
+		LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		LPC_PINCON->PINSEL4 |= (1<<6);
+
+		LPC_PWM1->CTCR =0;	//mode timer
+		LPC_PWM1->PR =0; //Pas de prédivision
+		LPC_PWM1->MR0 =499999; //valeur de N 50Hz
+		LPC_PWM1->MCR =LPC_PWM1->MCR | (1<<1); //RAZ du compteur si correspondance avec MR0		
+		LPC_PWM1->PCR =LPC_PWM1->PCR | (1<<12); //active PWM3
+		
+		for (i=40000; i<45000; i++)
+		{
+		LPC_PWM1->MR4 = i;// rapport cyclique selon sens
+		LPC_PWM1->TCR =1;	//démarage du timer
+		}
+		for (i=0; i<399999; i++);
+		for (i=45000; i>40000; i--)
+		{
+		LPC_PWM1->MR4 = i;// rapport cyclique selon sens
+		LPC_PWM1->TCR =1;	//démarage du timer
+		}
+		for (i=0; i<99; i++);
+		for (i=40000; i<44000; i++)
+		{
+		LPC_PWM1->MR4 = i;// rapport cyclique selon sens
+		LPC_PWM1->TCR =1;	//démarage du timer
+		}
+		for (i=0; i<99; i++);
+		for (i=45000; i>40000; i--)
+		{
+		LPC_PWM1->MR4 = i;// rapport cyclique selon sens
+		LPC_PWM1->TCR =1;	//démarage du timer
+		}
+		
+	}
+	
+	
+void marche_essai(int i)
+	{
+		LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		LPC_PINCON->PINSEL4 |= (1<<6);
+
+		LPC_PWM1->CTCR =0;	//mode timer
+		LPC_PWM1->PR =0; //Pas de prédivision
+		LPC_PWM1->MR0 =499999; //valeur de N 50Hz
+		LPC_PWM1->MCR =LPC_PWM1->MCR | (1<<1); //RAZ du compteur si correspondance avec MR0		
+		LPC_PWM1->PCR =LPC_PWM1->PCR | (1<<12); //active PWM3
+		
+		LPC_PWM1->MR4 = i;// rapport cyclique selon sens
+		LPC_PWM1->TCR =1;	//démarage du timer
+		
+	}
+void marche_av(int vitesse) // sur P2.3 avant=11 ; arret=00 ; reverse=22
+	{
+		int O;
+		//if (vitesse==00) O=39600; // pour un rapport ciclique de 7.5% 
+		if (vitesse==1) O=38999; // pour un rapport ciclique de 7.3 à 5.8%% 
+		else if (vitesse==2) O=37500; // pour un rapport ciclique de 8% à 8.6%
+		else if (vitesse==3) O=35999; // pour un rapport ciclique de 7.3 à 5.8%%
+		else if (vitesse==2) O=34499; // pour un rapport ciclique de 8% à 8.6%
+		else if (vitesse==3) O=32999; // pour un rapport ciclique de 7.3 à 5.8%%
+		else if (vitesse==2) O=31500; // pour un rapport ciclique de 8% à 8.6%
+		
+		
+		LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		LPC_PINCON->PINSEL4 |= (1<<6);
+
+		LPC_PWM1->CTCR =0;	//mode timer
+		LPC_PWM1->PR =0; //Pas de prédivision
+		LPC_PWM1->MR0 =499999; //valeur de N 50Hz
+		LPC_PWM1->MCR =LPC_PWM1->MCR | (1<<1); //RAZ du compteur si correspondance avec MR0		
+		LPC_PWM1->PCR =LPC_PWM1->PCR | (1<<12); //active PWM3
+		LPC_PWM1->MR4 = O;// rapport cyclique selon sens
+		LPC_PWM1->TCR =1;	//démarage du timer
+	}
+	
+
+
+
+void dir_Voiture(int position) //sur P2.4  gauche=1 ; centre 0; droite=2
+	{
+		double p;
+		int d;
+
+		if (position==1) d= 45000; //gauche	//39500
+		if (position==0) d= 38999; //centre	39000 //34000
+		if (position==2) d= 32000; //droite	//28500
+		
+		LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		LPC_PINCON->PINSEL4 |= (1<<8);
+
+		LPC_PWM1->CTCR =0;	//mode timer
+		LPC_PWM1->PR =0; //Pas de prédivision
+		LPC_PWM1->MR0 =499999; //valeur de N pour 50Hz
+		LPC_PWM1->MCR =LPC_PWM1->MCR | (1<<1); //RAZ du compteur si correspondance avec MR0		
+		LPC_PWM1->PCR =LPC_PWM1->PCR | (1<<13); //active PWM3
+		//LPC_PWM1->MR5 =(p*499999);// rapport cyclique selon position
+		LPC_PWM1->MR5 =d;// rapport cyclique selon position
+		LPC_PWM1->TCR =1;	//démarage du timer
+	}
+	
+
+void dir_gauche(int pourcent) // valeur entre 0.066 et 0.080 // sur P2.4
+	{
+		LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		LPC_PINCON->PINSEL4 |= (1<<8);
+
+		LPC_PWM1->CTCR =0;	//mode timer
+		LPC_PWM1->PR =0; //Pas de prédivision
+		LPC_PWM1->MR0 =499999; //valeur de N
+		LPC_PWM1->MCR =LPC_PWM1->MCR | (1<<1); //RAZ du compteur si correspondance avec MR0		
+		LPC_PWM1->PCR =LPC_PWM1->PCR | (1<<13); //active PWM3
+		LPC_PWM1->MR5 =(pourcent*423);	// rapport cyclique de 25%(pourcent*499999)
+		LPC_PWM1->TCR =1;	//démarage du timer
+	}
+	
+	
+void dir_droite(int pourcent) // valeur entre 0.080 et 0.094 // sur P2.4
+	{	
+		LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		LPC_PINCON->PINSEL4 = LPC_PINCON->PINSEL4 | (1<<8);
+
+		LPC_PWM1->CTCR =0;	//mode timer
+		LPC_PWM1->PR =0; //Pas de prédivision
+		LPC_PWM1->MR0 =499999; //valeur de N
+		LPC_PWM1->MCR =LPC_PWM1->MCR | (1<<1); //RAZ du compteur si correspondance avec MR0		
+		LPC_PWM1->PCR =LPC_PWM1->PCR | (1<<13); //active PWM3
+		LPC_PWM1->MR5 =(pourcent*301); // rapport cyclique de pourcent*dir (pourcent*499999)
+		LPC_PWM1->TCR =1;	//démarage du timer
+	}
+
+void dir_centre(void) // sur P2.4
+	{	
+		LPC_SC->PCONP = LPC_SC->PCONP | (1<<6);
+		LPC_PINCON->PINSEL4 |= (1<<8);
+
+		LPC_PWM1->CTCR =0;	//mode timer
+		LPC_PWM1->PR =0; //Pas de prédivision
+		LPC_PWM1->MR0 =499999; //valeur de N
+		LPC_PWM1->MCR =LPC_PWM1->MCR | (1<<1); //RAZ du compteur si correspondance avec MR0		
+		LPC_PWM1->PCR =LPC_PWM1->PCR | (1<<13); //active PWM3
+		LPC_PWM1->MR5 =37500;// rapport cyclique de 25%  (0.08*499999)
+		LPC_PWM1->TCR =1;	//démarage du timer
+	}
+	
